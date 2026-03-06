@@ -6,7 +6,7 @@ import Toolbar from './components/Toolbar';
 import History from './components/History';
 import './App.css';
 
-const BACKEND_URL = 'http://localhost:5000';
+const BACKEND_URL = 'https://quantum-production-4564.up.railway.app';
 
 const defaultCode = {
   cpp: `#include <iostream>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './History.css';
 
-const BACKEND_URL = 'http://localhost:5000';
+const BACKEND_URL = 'https://quantum-production-4564.up.railway.app';
 
 const History = ({ userEmail, onClose, onLoadCode }) => {
   const [history, setHistory] = useState([]);
