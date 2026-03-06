@@ -1,0 +1,20 @@
+{
+  "name": "quantum-compiler",
+  "version": "2.1.0",
+  "description": "Professional web-based code compiler for C++, Python, and Java",
+  "scripts": {
+    "install-all": "cd backend && npm install && cd ../frontend && npm install",
+    "start": "cd backend && node server.js",
+    "build": "cd frontend && npm install && npm run build",
+    "vercel-build": "cd frontend && npm install && npm run build"
+  },
+  "keywords": [
+    "compiler",
+    "code-editor",
+    "monaco-editor",
+    "react",
+    "nodejs"
+  ],
+  "author": "Quantum Team",
+  "license": "MIT"
+}

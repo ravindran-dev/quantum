@@ -1,0 +1,10 @@
+backend/
+node_modules/
+.git/
+*.log
+backend.log
+frontend.log
+setup.sh
+start.sh
+.env
+.DS_Store

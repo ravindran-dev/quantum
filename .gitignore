@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+
+# Build
+frontend/build/
+dist/
+
+# Temporary compilation files
+backend/temp/
+*.class
+*.exe
+*.out
+
+# Database
+backend/*.db
+backend/*.db-shm
+backend/*.db-wal
+backend/quantum_compiler_db.json
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+backend.log
+frontend.log
