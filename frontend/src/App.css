@@ -301,6 +301,49 @@
   transform: translateY(0);
 }
 
+.auth-error {
+  background-color: rgba(244, 67, 54, 0.15);
+  color: #ff6b6b;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  border: 1px solid rgba(244, 67, 54, 0.3);
+  animation: shake 0.3s ease;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+.auth-toggle {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #3e3e42;
+  text-align: center;
+}
+
+.auth-toggle p {
+  color: #b0b0b0;
+  font-size: 13px;
+  margin: 0;
+}
+
+.toggle-link {
+  color: #007acc;
+  cursor: pointer;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s ease;
+}
+
+.toggle-link:hover {
+  color: #1a8cdb;
+  text-decoration: underline;
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
   .split-container {

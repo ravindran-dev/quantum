@@ -32,8 +32,11 @@ function App() {
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState('');
   const [userEmail, setUserEmail] = useState('');
+  const [userPassword, setUserPassword] = useState('');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [authError, setAuthError] = useState('');
   const [showHistory, setShowHistory] = useState(false);
   const [saveStatus, setSaveStatus] = useState(''); // 'saving', 'saved', ''
 
@@ -98,22 +101,44 @@ function App() {
   }, [code, userEmail, isLoggedIn]);
 
   const handleLogin = () => {
+    setUserEmail('');
+    setUserPassword('');
+    setAuthError('');
+    setIsRegistering(false);
     setShowLoginModal(true);
   };
 
-  const handleLoginSubmit = () => {
-    if (userEmail.trim()) {
-      setIsLoggedIn(true);
-      setShowLoginModal(false);
-      // Save login state to localStorage
-      localStorage.setItem('userEmail', userEmail);
-      localStorage.setItem('isLoggedIn', 'true');
-      loadSavedCode();
+  const handleLoginSubmit = async () => {
+    if (!userEmail.trim() || !userPassword.trim()) {
+      setAuthError('Email and password are required');
+      return;
+    }
+
+    try {
+      const endpoint = isRegistering ? '/api/auth/register' : '/api/auth/login';
+      const response = await axios.post(`${BACKEND_URL}${endpoint}`, {
+        email: userEmail,
+        password: userPassword
+      });
+
+      if (response.data.success) {
+        setIsLoggedIn(true);
+        setShowLoginModal(false);
+        setAuthError('');
+        setUserPassword('');
+        // Save login state to localStorage
+        localStorage.setItem('userEmail', userEmail);
+        localStorage.setItem('isLoggedIn', 'true');
+        loadSavedCode();
+      }
+    } catch (err) {
+      setAuthError(err.response?.data?.message || 'Authentication failed');
     }
   };
 
   const handleSwitchAccount = () => {
     setUserEmail('');
+    setUserPassword('');
     setIsLoggedIn(false);
     setCode(defaultCode[language]);
     // Clear localStorage
@@ -210,24 +235,53 @@ function App() {
       {showLoginModal && (
         <div className="login-modal-overlay" onClick={() => setShowLoginModal(false)}>
           <div className="login-modal" onClick={(e) => e.stopPropagation()}>
-            <h2>Login to Save Your Code</h2>
-            <p>Enter your email to automatically save your work</p>
+            <h2>{isRegistering ? 'Create Account' : 'Login to Save Your Code'}</h2>
+            <p>{isRegistering ? 'Register to save and manage your code' : 'Enter your credentials to access your saved work'}</p>
+            
+            {authError && (
+              <div className="auth-error">{authError}</div>
+            )}
+            
             <input
               type="email"
               placeholder="Enter your email"
               value={userEmail}
               onChange={(e) => setUserEmail(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleLoginSubmit()}
               className="login-input"
               autoFocus
+            />
+            <input
+              type="password"
+              placeholder="Enter your password (min 4 characters)"
+              value={userPassword}
+              onChange={(e) => setUserPassword(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleLoginSubmit()}
+              className="login-input"
             />
             <div className="login-actions">
               <button onClick={() => setShowLoginModal(false)} className="cancel-btn">
                 Cancel
               </button>
               <button onClick={handleLoginSubmit} className="login-submit-btn">
-                Login
+                {isRegistering ? 'Register' : 'Login'}
               </button>
+            </div>
+            <div className="auth-toggle">
+              {isRegistering ? (
+                <p>
+                  Already have an account?{' '}
+                  <span onClick={() => { setIsRegistering(false); setAuthError(''); }} className="toggle-link">
+                    Login here
+                  </span>
+                </p>
+              ) : (
+                <p>
+                  Don't have an account?{' '}
+                  <span onClick={() => { setIsRegistering(true); setAuthError(''); }} className="toggle-link">
+                    Register here
+                  </span>
+                </p>
+              )}
             </div>
           </div>
         </div>

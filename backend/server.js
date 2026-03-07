@@ -4,6 +4,7 @@ const bodyParser = require('body-parser');
 const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const Database = require('better-sqlite3');
 
 const app = express();
@@ -19,6 +20,13 @@ const db = new Database(dbPath);
 
 // Create tables if they don't exist
 db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS user_code (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT NOT NULL,
@@ -38,6 +46,7 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
   CREATE INDEX IF NOT EXISTS idx_user_code ON user_code(email, language);
   CREATE INDEX IF NOT EXISTS idx_history_email ON code_history(email, created_at DESC);
 `);
@@ -47,6 +56,60 @@ const tempDir = path.join(__dirname, 'temp');
 if (!fs.existsSync(tempDir)) {
   fs.mkdirSync(tempDir, { recursive: true });
 }
+
+// Helper function to hash password
+function hashPassword(password) {
+  return crypto.createHash('sha256').update(password).digest('hex');
+}
+
+// Register endpoint
+app.post('/api/auth/register', (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ success: false, message: 'Email and password are required' });
+  }
+
+  if (password.length < 4) {
+    return res.status(400).json({ success: false, message: 'Password must be at least 4 characters' });
+  }
+
+  try {
+    const hashedPassword = hashPassword(password);
+    const stmt = db.prepare('INSERT INTO users (email, password) VALUES (?, ?)');
+    stmt.run(email, hashedPassword);
+    res.json({ success: true, message: 'Registration successful' });
+  } catch (error) {
+    if (error.message.includes('UNIQUE constraint')) {
+      res.status(409).json({ success: false, message: 'Email already registered' });
+    } else {
+      res.status(500).json({ success: false, message: 'Registration failed: ' + error.message });
+    }
+  }
+});
+
+// Login endpoint
+app.post('/api/auth/login', (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ success: false, message: 'Email and password are required' });
+  }
+
+  try {
+    const hashedPassword = hashPassword(password);
+    const stmt = db.prepare('SELECT * FROM users WHERE email = ? AND password = ?');
+    const user = stmt.get(email, hashedPassword);
+
+    if (user) {
+      res.json({ success: true, message: 'Login successful', email: user.email });
+    } else {
+      res.status(401).json({ success: false, message: 'Invalid email or password' });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Login failed: ' + error.message });
+  }
+});
 
 // Clean up old files periodically
 setInterval(() => {
