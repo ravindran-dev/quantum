@@ -293,7 +293,7 @@ public class Main {
 }
 ```
 
-## 🛠️ API Endpoints
+##  API Endpoints
 
 ### POST `/api/compile`
 
@@ -360,26 +360,6 @@ Health check endpoint.
 }
 ```
 
-## 🎨 Customization
-
-### Change Backend Port
-
-Edit `backend/server.js`:
-```javascript
-const PORT = 5000; // Change to your desired port
-```
-
-Also update `frontend/src/App.js`:
-```javascript
-const BACKEND_URL = 'http://localhost:5000'; // Update port here too
-```
-
-### Modify Execution Timeout
-
-Edit `backend/server.js` and change the timeout value:
-```javascript
-exec(command, { timeout: 5000 }, ...); // 5000ms = 5 seconds
-```
 
 ## Security Notes
 
@@ -435,14 +415,6 @@ cd /home/ravi/quantum
 vercel --prod
 ```
 
-### Alternative Options
-
-- **Render**: Free tier with auto-sleep (good for testing)
-- **Heroku**: Reliable but paid
-- **DigitalOcean**: App Platform or Droplet
-- **Railway**: Full-stack deployment (both frontend + backend)
-
-See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions and all deployment options.
 
 ## Troubleshooting
 
