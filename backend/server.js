@@ -46,9 +46,20 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS project_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    language TEXT NOT NULL,
+    content TEXT NOT NULL,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(email, filename)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
   CREATE INDEX IF NOT EXISTS idx_user_code ON user_code(email, language);
   CREATE INDEX IF NOT EXISTS idx_history_email ON code_history(email, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_project_files_email ON project_files(email, updated_at DESC);
 `);
 
 // Create temp directory for code execution
@@ -221,6 +232,81 @@ app.delete('/api/history/:email/:id', (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ error: 'Failed to delete history: ' + error.message });
+  }
+});
+
+// List project files for a user
+app.get('/api/project-files/:email', (req, res) => {
+  const { email } = req.params;
+
+  try {
+    const stmt = db.prepare(`
+      SELECT filename as name, language, content, updated_at
+      FROM project_files
+      WHERE email = ?
+      ORDER BY updated_at DESC, id DESC
+    `);
+    const files = stmt.all(email);
+    res.json({ files });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to retrieve project files: ' + error.message });
+  }
+});
+
+// Save or update one project file for a user
+app.post('/api/project-files/save', (req, res) => {
+  const { email, name, language, content } = req.body;
+
+  if (!email || !name || !language || typeof content !== 'string') {
+    return res.status(400).json({ error: 'Email, name, language, and content are required' });
+  }
+
+  try {
+    const stmt = db.prepare(`
+      INSERT INTO project_files (email, filename, language, content, updated_at)
+      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(email, filename)
+      DO UPDATE SET
+        language = excluded.language,
+        content = excluded.content,
+        updated_at = CURRENT_TIMESTAMP
+    `);
+
+    stmt.run(email, name, language, content);
+    res.json({ success: true, message: 'Project file saved successfully' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to save project file: ' + error.message });
+  }
+});
+
+// Delete one project file for a user
+app.delete('/api/project-files/:email/:filename', (req, res) => {
+  const { email, filename } = req.params;
+
+  try {
+    const stmt = db.prepare('DELETE FROM project_files WHERE email = ? AND filename = ?');
+    const result = stmt.run(email, filename);
+
+    if (result.changes > 0) {
+      res.json({ success: true, message: 'Project file deleted' });
+    } else {
+      res.status(404).json({ error: 'Project file not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete project file: ' + error.message });
+  }
+});
+
+// Delete all project files for a user
+app.delete('/api/project-files/:email', (req, res) => {
+  const { email } = req.params;
+
+  try {
+    const stmt = db.prepare('DELETE FROM project_files WHERE email = ?');
+    const result = stmt.run(email);
+    res.json({ success: true, deletedCount: result.changes });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to clear project files: ' + error.message });
   }
 });
 
