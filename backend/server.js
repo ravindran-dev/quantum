@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const { exec } = require('child_process');
+const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -66,6 +66,83 @@ db.exec(`
 const tempDir = path.join(__dirname, 'temp');
 if (!fs.existsSync(tempDir)) {
   fs.mkdirSync(tempDir, { recursive: true });
+}
+
+const cacheDir = path.join(__dirname, 'cache');
+const cppCacheDir = path.join(cacheDir, 'cpp');
+const javaCacheDir = path.join(cacheDir, 'java');
+for (const dir of [cacheDir, cppCacheDir, javaCacheDir]) {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+}
+
+const isWindows = process.platform === 'win32';
+const CPP_EXEC_EXT = isWindows ? '.exe' : '.out';
+const PYTHON_CMD = isWindows ? 'python' : 'python3';
+
+function shortHash(value) {
+  return crypto.createHash('sha256').update(value).digest('hex').slice(0, 16);
+}
+
+function runProcess(command, args, options = {}) {
+  const {
+    cwd,
+    input,
+    timeoutMs = 5000
+  } = options;
+
+  return new Promise((resolve) => {
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+
+    const child = spawn(command, args, {
+      cwd,
+      shell: false,
+      windowsHide: true
+    });
+
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGKILL');
+    }, timeoutMs);
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on('error', (error) => {
+      clearTimeout(timeout);
+      resolve({
+        code: -1,
+        stdout,
+        stderr: stderr || error.message,
+        timedOut: false,
+        spawnError: true
+      });
+    });
+
+    child.on('close', (code) => {
+      clearTimeout(timeout);
+      resolve({
+        code,
+        stdout,
+        stderr,
+        timedOut,
+        spawnError: false
+      });
+    });
+
+    if (typeof input === 'string' && input.length > 0) {
+      child.stdin.write(input);
+    }
+    child.stdin.end();
+  });
 }
 
 // Helper function to hash password
@@ -134,6 +211,27 @@ setInterval(() => {
     }
   });
 }, 60000); // Run every minute
+
+// Evict stale compile cache artifacts to control disk usage.
+setInterval(() => {
+  const now = Date.now();
+  const maxAgeMs = 60 * 60 * 1000; // 1 hour
+
+  for (const dir of [cppCacheDir, javaCacheDir]) {
+    const entries = fs.readdirSync(dir);
+    for (const entry of entries) {
+      const entryPath = path.join(dir, entry);
+      try {
+        const stats = fs.statSync(entryPath);
+        if (now - stats.mtimeMs > maxAgeMs) {
+          fs.rmSync(entryPath, { recursive: true, force: true });
+        }
+      } catch (err) {
+        // Ignore cache cleanup errors.
+      }
+    }
+  }
+}, 5 * 60 * 1000);
 
 // Save user code to database
 app.post('/api/code/save', (req, res) => {
@@ -318,20 +416,17 @@ app.post('/api/compile', async (req, res) => {
     return res.status(400).json({ error: 'Code and language are required' });
   }
 
-  const timestamp = Date.now();
-  const uniqueId = `${timestamp}_${Math.random().toString(36).substr(2, 9)}`;
-
   try {
     let result;
     switch (language.toLowerCase()) {
       case 'cpp':
-        result = await compileCpp(code, input, uniqueId);
+        result = await compileCpp(code, input);
         break;
       case 'python':
-        result = await runPython(code, input, uniqueId);
+        result = await runPython(code, input);
         break;
       case 'java':
-        result = await compileJava(code, input, uniqueId);
+        result = await compileJava(code, input);
         break;
       default:
         return res.status(400).json({ error: 'Unsupported language' });
@@ -343,178 +438,163 @@ app.post('/api/compile', async (req, res) => {
 });
 
 // C++ compilation and execution
-function compileCpp(code, input, uniqueId) {
-  return new Promise((resolve, reject) => {
-    const sourceFile = path.join(tempDir, `${uniqueId}.cpp`);
-    const outputFile = path.join(tempDir, `${uniqueId}.out`);
-    const inputFile = path.join(tempDir, `${uniqueId}.txt`);
+async function compileCpp(code, input) {
+  const codeHash = shortHash(code);
+  const sourceFile = path.join(cppCacheDir, `${codeHash}.cpp`);
+  const outputFile = path.join(cppCacheDir, `${codeHash}${CPP_EXEC_EXT}`);
 
-    // Write source code
+  if (!fs.existsSync(outputFile)) {
     fs.writeFileSync(sourceFile, code);
+    const compileResult = await runProcess('g++', [sourceFile, '-O0', '-o', outputFile], {
+      timeoutMs: 15000
+    });
 
-    // Write input if provided
-    if (input) {
-      fs.writeFileSync(inputFile, input);
+    if (compileResult.timedOut) {
+      cleanup([sourceFile, outputFile]);
+      return {
+        success: false,
+        output: compileResult.stdout,
+        error: 'Compilation timeout (15 seconds exceeded)'
+      };
     }
 
-    // Compile
-    exec(`g++ "${sourceFile}" -o "${outputFile}" 2>&1`, (compileError, compileStdout, compileStderr) => {
-      if (compileError) {
-        cleanup([sourceFile, outputFile, inputFile]);
-        return resolve({ 
-          success: false, 
-          output: compileStdout || compileStderr,
-          error: 'Compilation failed'
-        });
-      }
+    if (compileResult.spawnError || compileResult.code !== 0) {
+      cleanup([sourceFile, outputFile]);
+      return {
+        success: false,
+        output: compileResult.stdout || compileResult.stderr,
+        error: 'Compilation failed'
+      };
+    }
+  }
 
-      // Execute
-      const execCommand = input 
-        ? `"${outputFile}" < "${inputFile}"`
-        : `"${outputFile}"`;
-
-      exec(execCommand, { timeout: 5000 }, (execError, execStdout, execStderr) => {
-        cleanup([sourceFile, outputFile, inputFile]);
-
-        if (execError && execError.killed) {
-          return resolve({
-            success: false,
-            output: execStdout,
-            error: 'Execution timeout (5 seconds exceeded)'
-          });
-        }
-
-        if (execError) {
-          return resolve({
-            success: false,
-            output: execStdout + '\n' + execStderr,
-            error: 'Runtime error'
-          });
-        }
-
-        resolve({
-          success: true,
-          output: execStdout || 'Program executed successfully with no output'
-        });
-      });
-    });
+  const execResult = await runProcess(outputFile, [], {
+    input,
+    timeoutMs: 5000
   });
+
+  if (execResult.timedOut) {
+    return {
+      success: false,
+      output: execResult.stdout,
+      error: 'Execution timeout (5 seconds exceeded)'
+    };
+  }
+
+  if (execResult.spawnError || execResult.code !== 0) {
+    return {
+      success: false,
+      output: `${execResult.stdout}${execResult.stderr ? `\n${execResult.stderr}` : ''}`.trim(),
+      error: 'Runtime error'
+    };
+  }
+
+  return {
+    success: true,
+    output: execResult.stdout || 'Program executed successfully with no output'
+  };
 }
 
 // Python execution
-function runPython(code, input, uniqueId) {
-  return new Promise((resolve, reject) => {
-    const sourceFile = path.join(tempDir, `${uniqueId}.py`);
-    const inputFile = path.join(tempDir, `${uniqueId}.txt`);
-
-    // Write source code
-    fs.writeFileSync(sourceFile, code);
-
-    // Write input if provided
-    if (input) {
-      fs.writeFileSync(inputFile, input);
-    }
-
-    // Execute
-    const execCommand = input
-      ? `python3 "${sourceFile}" < "${inputFile}"`
-      : `python3 "${sourceFile}"`;
-
-    exec(execCommand, { timeout: 5000 }, (execError, execStdout, execStderr) => {
-      cleanup([sourceFile, inputFile]);
-
-      if (execError && execError.killed) {
-        return resolve({
-          success: false,
-          output: execStdout,
-          error: 'Execution timeout (5 seconds exceeded)'
-        });
-      }
-
-      if (execError) {
-        return resolve({
-          success: false,
-          output: execStderr || execStdout,
-          error: 'Runtime error'
-        });
-      }
-
-      resolve({
-        success: true,
-        output: execStdout || 'Program executed successfully with no output'
-      });
-    });
+async function runPython(code, input) {
+  const execResult = await runProcess(PYTHON_CMD, ['-c', code], {
+    input,
+    timeoutMs: 5000
   });
+
+  if (execResult.timedOut) {
+    return {
+      success: false,
+      output: execResult.stdout,
+      error: 'Execution timeout (5 seconds exceeded)'
+    };
+  }
+
+  if (execResult.spawnError || execResult.code !== 0) {
+    return {
+      success: false,
+      output: execResult.stderr || execResult.stdout,
+      error: 'Runtime error'
+    };
+  }
+
+  return {
+    success: true,
+    output: execResult.stdout || 'Program executed successfully with no output'
+  };
 }
 
 // Java compilation and execution
-function compileJava(code, input, uniqueId) {
-  return new Promise((resolve, reject) => {
-    // Extract class name from code
-    const classNameMatch = code.match(/public\s+class\s+(\w+)/);
-    if (!classNameMatch) {
-      return resolve({
-        success: false,
-        error: 'Could not find public class declaration',
-        output: 'Make sure your code contains: public class ClassName'
-      });
-    }
+async function compileJava(code, input) {
+  const classNameMatch = code.match(/public\s+class\s+(\w+)/);
+  if (!classNameMatch) {
+    return {
+      success: false,
+      error: 'Could not find public class declaration',
+      output: 'Make sure your code contains: public class ClassName'
+    };
+  }
 
-    const className = classNameMatch[1];
-    const sourceFile = path.join(tempDir, `${className}.java`);
-    const classFile = path.join(tempDir, `${className}.class`);
-    const inputFile = path.join(tempDir, `${uniqueId}.txt`);
+  const className = classNameMatch[1];
+  const codeHash = shortHash(code);
+  const classDir = path.join(javaCacheDir, `${codeHash}_${className}`);
+  const sourceFile = path.join(classDir, `${className}.java`);
+  const classFile = path.join(classDir, `${className}.class`);
 
-    // Write source code
+  if (!fs.existsSync(classDir)) {
+    fs.mkdirSync(classDir, { recursive: true });
+  }
+
+  if (!fs.existsSync(classFile)) {
     fs.writeFileSync(sourceFile, code);
+    const compileResult = await runProcess('javac', [sourceFile], {
+      timeoutMs: 15000
+    });
 
-    // Write input if provided
-    if (input) {
-      fs.writeFileSync(inputFile, input);
+    if (compileResult.timedOut) {
+      cleanup([classDir]);
+      return {
+        success: false,
+        output: compileResult.stdout,
+        error: 'Compilation timeout (15 seconds exceeded)'
+      };
     }
 
-    // Compile
-    exec(`javac "${sourceFile}" 2>&1`, (compileError, compileStdout, compileStderr) => {
-      if (compileError) {
-        cleanup([sourceFile, classFile, inputFile]);
-        return resolve({
-          success: false,
-          output: compileStdout || compileStderr,
-          error: 'Compilation failed'
-        });
-      }
+    if (compileResult.spawnError || compileResult.code !== 0) {
+      cleanup([classDir]);
+      return {
+        success: false,
+        output: compileResult.stdout || compileResult.stderr,
+        error: 'Compilation failed'
+      };
+    }
+  }
 
-      // Execute
-      const execCommand = input
-        ? `java -cp "${tempDir}" ${className} < "${inputFile}"`
-        : `java -cp "${tempDir}" ${className}`;
-
-      exec(execCommand, { timeout: 5000 }, (execError, execStdout, execStderr) => {
-        cleanup([sourceFile, classFile, inputFile]);
-
-        if (execError && execError.killed) {
-          return resolve({
-            success: false,
-            output: execStdout,
-            error: 'Execution timeout (5 seconds exceeded)'
-          });
-        }
-
-        if (execError) {
-          return resolve({
-            success: false,
-            output: execStderr || execStdout,
-            error: 'Runtime error'
-          });
-        }
-
-        resolve({
-          success: true,
-          output: execStdout || 'Program executed successfully with no output'
-        });
-      });
-    });
+  const execResult = await runProcess('java', ['-cp', classDir, className], {
+    input,
+    timeoutMs: 5000
   });
+
+  if (execResult.timedOut) {
+    return {
+      success: false,
+      output: execResult.stdout,
+      error: 'Execution timeout (5 seconds exceeded)'
+    };
+  }
+
+  if (execResult.spawnError || execResult.code !== 0) {
+    return {
+      success: false,
+      output: execResult.stderr || execResult.stdout,
+      error: 'Runtime error'
+    };
+  }
+
+  return {
+    success: true,
+    output: execResult.stdout || 'Program executed successfully with no output'
+  };
 }
 
 // Cleanup helper
