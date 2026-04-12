@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -80,6 +80,41 @@ for (const dir of [cacheDir, cppCacheDir, javaCacheDir]) {
 const isWindows = process.platform === 'win32';
 const CPP_EXEC_EXT = isWindows ? '.exe' : '.out';
 const PYTHON_CMD = isWindows ? 'python' : 'python3';
+
+function commandExists(command, args = ['--version']) {
+  try {
+    const result = spawnSync(command, args, {
+      shell: false,
+      windowsHide: true,
+      stdio: 'ignore'
+    });
+
+    // ENOENT is represented as `result.error` on Windows/Node.
+    if (result.error && result.error.code === 'ENOENT') {
+      return false;
+    }
+
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function resolveFirstAvailableCommand(candidates) {
+  for (const candidate of candidates) {
+    if (commandExists(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+const cppCompilerCandidates = isWindows
+  ? ['g++.exe', 'g++', 'clang++.exe', 'clang++', 'c++.exe', 'c++']
+  : ['g++', 'clang++', 'c++'];
+
+const CPP_COMPILER = process.env.CPP_COMPILER || resolveFirstAvailableCommand(cppCompilerCandidates);
 
 function shortHash(value) {
   return crypto.createHash('sha256').update(value).digest('hex').slice(0, 16);
@@ -439,13 +474,21 @@ app.post('/api/compile', async (req, res) => {
 
 // C++ compilation and execution
 async function compileCpp(code, input) {
+  if (!CPP_COMPILER) {
+    return {
+      success: false,
+      error: 'C++ compiler not found',
+      output: 'No C++ compiler executable was found in PATH. Install g++ (recommended) or clang++, or set CPP_COMPILER env var.'
+    };
+  }
+
   const codeHash = shortHash(code);
   const sourceFile = path.join(cppCacheDir, `${codeHash}.cpp`);
   const outputFile = path.join(cppCacheDir, `${codeHash}${CPP_EXEC_EXT}`);
 
   if (!fs.existsSync(outputFile)) {
     fs.writeFileSync(sourceFile, code);
-    const compileResult = await runProcess('g++', [sourceFile, '-O0', '-o', outputFile], {
+    const compileResult = await runProcess(CPP_COMPILER, [sourceFile, '-std=c++17', '-O0', '-o', outputFile], {
       timeoutMs: 15000
     });
 
@@ -462,7 +505,7 @@ async function compileCpp(code, input) {
       cleanup([sourceFile, outputFile]);
       return {
         success: false,
-        output: compileResult.stdout || compileResult.stderr,
+        output: compileResult.stderr || compileResult.stdout || `Compiler '${CPP_COMPILER}' returned exit code ${compileResult.code}`,
         error: 'Compilation failed'
       };
     }
@@ -612,7 +655,15 @@ function cleanup(files) {
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', message: 'Code compiler server is running' });
+  res.json({
+    status: 'OK',
+    message: 'Code compiler server is running',
+    compilers: {
+      cpp: CPP_COMPILER,
+      python: PYTHON_CMD,
+      java: 'javac/java'
+    }
+  });
 });
 
 app.listen(PORT, () => {
