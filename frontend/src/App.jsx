@@ -105,6 +105,11 @@ function App() {
   const [editorTheme, setEditorTheme] = useState('vs-dark');
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
 
+  // New UI state
+  const [bottomPanelCollapsed, setBottomPanelCollapsed] = useState(false);
+  const [activeBottomTab, setActiveBottomTab] = useState('output');
+  const [sidebarSearch, setSidebarSearch] = useState('');
+
   const fileInputRef = useRef(null);
   const skipSavedLoadRef = useRef(false);
   const languageMenuRef = useRef(null);
@@ -594,132 +599,86 @@ function App() {
   };
 
   const runtimeMs = output ? Math.max(120, output.length * 4) : 0;
-  const cpuUsage = isRunning ? 32 : 18;
-  const memoryUsage = isRunning ? '28MB' : '12MB';
 
-  const terminalText = [
-    '(venv) $ python main.py',
-    isRunning ? 'INFO: Quantum Execution Engine running...' : 'INFO: Quantum Execution Engine ready.',
-    output ? `OUTPUT: ${output.split('\n')[0]}` : 'OUTPUT: Waiting for program execution...'
-  ].join('\n');
+  const filteredFiles = projectFiles.filter((f) =>
+    f.name.toLowerCase().includes(sidebarSearch.toLowerCase())
+  );
 
-  const displayName = isLoggedIn ? userEmail.split('@')[0] : 'Guest User';
-  const uploadedFilesCount = projectFiles.length;
+  const displayName = isLoggedIn ? userEmail.split('@')[0] : 'Guest';
 
   return (
     <div className="ide-shell">
-      <div className="bg-grid" aria-hidden="true"></div>
-      <div className="bg-glow bg-glow-left" aria-hidden="true"></div>
-      <div className="bg-glow bg-glow-right" aria-hidden="true"></div>
 
+      {/* ── Login Modal ── */}
       {showLoginModal && (
         <div className="login-modal-overlay" onClick={() => setShowLoginModal(false)}>
           <div className="login-modal" onClick={(e) => e.stopPropagation()}>
-            <h2>{isRegistering ? 'Create Account' : 'Login to Save Your Code'}</h2>
-            <p>
-              {isRegistering
-                ? 'Register to save and manage your code'
-                : 'Enter your credentials to access your saved work'}
-            </p>
-
-            {authError && <div className="auth-error">{authError}</div>}
-
-            <input
-              type="email"
-              placeholder="Enter your email"
-              value={userEmail}
-              onChange={(e) => setUserEmail(e.target.value)}
-              className="login-input"
-              autoFocus
-            />
-            <input
-              type="password"
-              placeholder="Enter your password (min 4 characters)"
-              value={userPassword}
-              onChange={(e) => setUserPassword(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleLoginSubmit()}
-              className="login-input"
-            />
-            <div className="login-actions">
-              <button onClick={() => setShowLoginModal(false)} className="cancel-btn">
-                Cancel
-              </button>
-              <button onClick={handleLoginSubmit} className="login-submit-btn">
-                {isRegistering ? 'Register' : 'Login'}
-              </button>
-            </div>
-            <div className="auth-toggle">
-              {isRegistering ? (
-                <p>
-                  Already have an account?{' '}
-                  <span
-                    onClick={() => {
-                      setIsRegistering(false);
-                      setAuthError('');
-                    }}
-                    className="toggle-link"
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => e.key === 'Enter' && setIsRegistering(false)}
-                  >
-                    Login here
-                  </span>
-                </p>
-              ) : (
-                <p>
-                  Don&apos;t have an account?{' '}
-                  <span
-                    onClick={() => {
-                      setIsRegistering(true);
-                      setAuthError('');
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => e.key === 'Enter' && setIsRegistering(true)}
-                  >
-                    Register here
-                  </span>
-                </p>
+            <div className="login-modal-bg-glow"></div>
+            <div className="login-modal-content">
+              <h2>{isRegistering ? 'Create Account' : 'Welcome Back'}</h2>
+              <p className="login-subtitle">
+                {isRegistering
+                  ? 'Register to save and manage your code across sessions.'
+                  : 'Enter your credentials to access your saved work.'}
+              </p>
+              {authError && (
+                <div className="auth-error">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                  <span>{authError}</span>
+                </div>
               )}
+              <div className="login-form">
+                <div className="input-group">
+                  <div className="input-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                  </div>
+                  <input type="email" placeholder="Email Address" value={userEmail} onChange={(e) => setUserEmail(e.target.value)} className="login-input" autoFocus />
+                </div>
+                <div className="input-group">
+                  <div className="input-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                  </div>
+                  <input type="password" placeholder="Password (min 4 chars)" value={userPassword} onChange={(e) => setUserPassword(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleLoginSubmit()} className="login-input" />
+                </div>
+                <div className="login-actions">
+                  <button onClick={() => setShowLoginModal(false)} className="cancel-btn">Cancel</button>
+                  <button onClick={handleLoginSubmit} className="login-submit-btn">
+                    <span>{isRegistering ? 'Register' : 'Login'}</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="btn-icon"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                  </button>
+                </div>
+              </div>
+              <div className="auth-toggle">
+                {isRegistering ? (
+                  <p>Already have an account?{' '}<span onClick={() => { setIsRegistering(false); setAuthError(''); }} className="toggle-link" role="button" tabIndex={0}>Login here</span></p>
+                ) : (
+                  <p>Don&apos;t have an account?{' '}<span onClick={() => { setIsRegistering(true); setAuthError(''); }} className="toggle-link" role="button" tabIndex={0}>Register here</span></p>
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
 
+      {/* ── Settings Modal ── */}
       {showSettingsModal && (
         <div className="settings-modal-overlay" onClick={() => setShowSettingsModal(false)}>
           <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
             <div className="settings-header">
-              <h3>Compiler Settings</h3>
-              <button type="button" className="close-settings-btn" onClick={() => setShowSettingsModal(false)}>
-                x
-              </button>
+              <h3>Editor Settings</h3>
+              <button type="button" className="close-settings-btn" onClick={() => setShowSettingsModal(false)}>✕</button>
             </div>
-
             <div className="settings-row">
-              <label htmlFor="font-size-range">Editor Font Size: {editorFontSize}px</label>
-              <input
-                id="font-size-range"
-                type="range"
-                min="12"
-                max="24"
-                value={editorFontSize}
-                onChange={(e) => setEditorFontSize(Number(e.target.value))}
-              />
+              <label htmlFor="font-size-range">Font Size: {editorFontSize}px</label>
+              <input id="font-size-range" type="range" min="12" max="24" value={editorFontSize} onChange={(e) => setEditorFontSize(Number(e.target.value))} />
             </div>
-
             <div className="settings-row">
               <label htmlFor="word-wrap-select">Word Wrap</label>
-              <select
-                id="word-wrap-select"
-                value={editorWordWrap}
-                onChange={(e) => setEditorWordWrap(e.target.value)}
-              >
+              <select id="word-wrap-select" value={editorWordWrap} onChange={(e) => setEditorWordWrap(e.target.value)}>
                 <option value="on">On</option>
                 <option value="off">Off</option>
               </select>
             </div>
-
             <div className="settings-row">
               <label htmlFor="theme-select">Editor Theme</label>
               <select id="theme-select" value={editorTheme} onChange={(e) => setEditorTheme(e.target.value)}>
@@ -728,29 +687,19 @@ function App() {
                 <option value="hc-black">High Contrast</option>
               </select>
             </div>
-
             <div className="settings-row checkbox-row">
-              <label htmlFor="autosave-toggle">Auto Save to Account</label>
-              <input
-                id="autosave-toggle"
-                type="checkbox"
-                checked={autoSaveEnabled}
-                onChange={(e) => setAutoSaveEnabled(e.target.checked)}
-              />
+              <label htmlFor="autosave-toggle">Auto Save</label>
+              <input id="autosave-toggle" type="checkbox" checked={autoSaveEnabled} onChange={(e) => setAutoSaveEnabled(e.target.checked)} />
             </div>
-
             <div className="settings-actions">
-              <button type="button" className="danger-btn" onClick={clearUploadedFiles}>
-                Clear Uploaded Files
-              </button>
-              <button type="button" className="save-settings-btn" onClick={() => setShowSettingsModal(false)}>
-                Done
-              </button>
+              <button type="button" className="danger-btn" onClick={clearUploadedFiles}>Clear Uploaded Files</button>
+              <button type="button" className="save-settings-btn" onClick={() => setShowSettingsModal(false)}>Done</button>
             </div>
           </div>
         </div>
       )}
 
+      {/* ── Profile Tab Modal ── */}
       {showProfileTab && (
         <div className="profile-tab-overlay" onClick={() => setShowProfileTab(false)}>
           <div className="profile-tab-modal" onClick={(e) => e.stopPropagation()}>
@@ -760,331 +709,275 @@ function App() {
                 <h3>{displayName}</h3>
                 <p>{isLoggedIn ? userEmail : 'Login required'}</p>
               </div>
-              <button type="button" className="close-profile-tab" onClick={() => setShowProfileTab(false)}>
-                x
-              </button>
+              <button type="button" className="close-profile-tab" onClick={() => setShowProfileTab(false)}>✕</button>
             </div>
-
             <div className="profile-tab-grid">
-              <div className="profile-stat-card">
-                <span className="stat-label">Uploaded Files</span>
-                <strong>{uploadedFilesCount}</strong>
-              </div>
-              <div className="profile-stat-card">
-                <span className="stat-label">Current Language</span>
-                <strong>{language.toUpperCase()}</strong>
-              </div>
-              <div className="profile-stat-card">
-                <span className="stat-label">Auto Save</span>
-                <strong>{autoSaveEnabled ? 'Enabled' : 'Disabled'}</strong>
-              </div>
-              <div className="profile-stat-card">
-                <span className="stat-label">Editor Theme</span>
-                <strong>{editorTheme}</strong>
-              </div>
+              <div className="profile-stat-card"><span className="stat-label">Files</span><strong>{projectFiles.length}</strong></div>
+              <div className="profile-stat-card"><span className="stat-label">Language</span><strong>{language.toUpperCase()}</strong></div>
+              <div className="profile-stat-card"><span className="stat-label">Auto Save</span><strong>{autoSaveEnabled ? 'On' : 'Off'}</strong></div>
+              <div className="profile-stat-card"><span className="stat-label">Theme</span><strong>{editorTheme}</strong></div>
             </div>
-
             <div className="profile-tab-actions">
-              <button type="button" className="profile-tab-btn" onClick={handleShowHistory}>
-                Open History
-              </button>
-              <button
-                type="button"
-                className="profile-tab-btn"
-                onClick={() => {
-                  setShowProfileTab(false);
-                  setShowSettingsModal(true);
-                }}
-              >
-                Open Settings
-              </button>
-              <button type="button" className="profile-tab-btn" onClick={clearUploadedFiles}>
-                Clear Uploaded Files
-              </button>
-              <button type="button" className="profile-tab-btn" onClick={handleSwitchAccount}>
-                Switch Account
-              </button>
-              <button type="button" className="profile-tab-btn danger" onClick={handleLogout}>
-                Logout
-              </button>
+              <button type="button" className="profile-tab-btn" onClick={handleShowHistory}>History</button>
+              <button type="button" className="profile-tab-btn" onClick={() => { setShowProfileTab(false); setShowSettingsModal(true); }}>Settings</button>
+              <button type="button" className="profile-tab-btn" onClick={clearUploadedFiles}>Clear Files</button>
+              <button type="button" className="profile-tab-btn" onClick={handleSwitchAccount}>Switch Account</button>
+              <button type="button" className="profile-tab-btn danger" onClick={handleLogout}>Logout</button>
             </div>
           </div>
         </div>
       )}
 
+      {/* ── History Modal ── */}
       {showHistory && (
         <History userEmail={userEmail} onClose={() => setShowHistory(false)} onLoadCode={handleLoadFromHistory} />
       )}
 
-      <div className="ide-app">
-        <header className="top-nav glass-panel">
-          <div className="top-nav-left">
-            <div className="logo-pill" aria-hidden="true">
-              {'</>'}
+      {/* ════════════════════════════════════════════ */}
+      {/* TOPBAR                                       */}
+      {/* ════════════════════════════════════════════ */}
+      <header className="topbar">
+        <div className="topbar-left">
+          <div className="topbar-logo">&lt;/&gt;</div>
+          <span className="topbar-title">Quantum</span>
+        </div>
+
+        <div className="topbar-center" ref={languageMenuRef}>
+          <button
+            className="lang-trigger"
+            type="button"
+            onClick={() => setShowLanguageMenu((p) => !p)}
+            aria-expanded={showLanguageMenu}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            <span>{languageOptions.find((l) => l.id === language)?.label}</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={showLanguageMenu ? 'caret open' : 'caret'}><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          {showLanguageMenu && (
+            <div className="lang-dropdown">
+              {languageOptions.map((lang) => (
+                <button key={lang.id} type="button" className={`lang-item ${language === lang.id ? 'active' : ''}`} onClick={() => handleLanguageChange(lang.id)}>
+                  {lang.label}
+                  <span className="lang-tag">{lang.tag}</span>
+                </button>
+              ))}
             </div>
-            <div className="project-name">Quantum</div>
-          </div>
+          )}
+        </div>
 
-          <div className="top-nav-center">
-            <div className="language-menu-wrap" ref={languageMenuRef}>
-              <span className="compile-ready-label">Ready to compile</span>
-              <button
-                className="language-menu-trigger"
-                type="button"
-                onClick={() => setShowLanguageMenu((prev) => !prev)}
-                aria-expanded={showLanguageMenu}
-              >
-                <span className="language-trigger-main">
-                  {languageOptions.find((item) => item.id === language)?.label}
-                </span>
-                <span className="language-tag" aria-hidden="true">
-                  {languageOptions.find((item) => item.id === language)?.tag}
-                </span>
-                <span className={`language-caret ${showLanguageMenu ? 'open' : ''}`} aria-hidden="true">
-                  ▾
-                </span>
-              </button>
-
-              <div className={`language-dropdown ${showLanguageMenu ? 'open' : ''}`}>
-                {languageOptions.map((lang) => (
-                  <button
-                    key={lang.id}
-                    type="button"
-                    className={`language-item ${language === lang.id ? 'active' : ''}`}
-                    onClick={() => handleLanguageChange(lang.id)}
-                  >
-                    <span>{lang.label}</span>
-                    <span className="language-item-tag">{lang.tag}</span>
-                  </button>
-                ))}
+        <div className="topbar-right">
+          {isLoggedIn && saveStatus && (
+            <span className={`save-chip ${saveStatus}`}>{saveStatus === 'saving' ? 'Saving…' : '✓ Saved'}</span>
+          )}
+          <button className="run-btn" onClick={handleRun} disabled={isRunning}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            {isRunning ? 'Running…' : 'Run'}
+          </button>
+          <button className="topbar-icon-btn" type="button" aria-label="Settings" onClick={() => setShowSettingsModal(true)}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </button>
+          <div className="profile-menu-wrap" ref={profileMenuRef}>
+            <button
+              className="avatar-btn"
+              type="button"
+              onClick={() => {
+                if (!isLoggedIn) { handleLogin(); return; }
+                setShowProfileMenu((p) => !p);
+              }}
+              title={isLoggedIn ? userEmail : 'Login'}
+            >
+              {getAvatarLabel()}
+            </button>
+            {isLoggedIn && showProfileMenu && (
+              <div className="profile-dropdown" role="menu">
+                <div className="profile-email">{userEmail}</div>
+                <button type="button" className="profile-item" onClick={handleOpenProfileTab}>Profile</button>
+                <button type="button" className="profile-item" onClick={handleShowHistory}>History</button>
+                <button type="button" className="profile-item" onClick={handleSwitchAccount}>Switch Account</button>
+                <button type="button" className="profile-item danger" onClick={handleLogout}>Logout</button>
               </div>
-            </div>
-          </div>
-
-          <div className="top-nav-right">
-            {isLoggedIn && saveStatus && (
-              <div className={`save-chip ${saveStatus}`}>{saveStatus === 'saving' ? 'Saving...' : 'Saved'}</div>
             )}
-            <button className="run-btn" onClick={handleRun} disabled={isRunning}>
-              {isRunning ? 'RUNNING' : 'RUN'} <span aria-hidden="true">▶</span>
-            </button>
-            <button className="icon-btn" type="button" aria-label="Settings" onClick={() => setShowSettingsModal(true)}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path
-                  d="M19.14 12.94c.04-.31.06-.62.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.1 7.1 0 0 0-1.62-.95l-.36-2.54a.5.5 0 0 0-.5-.42h-3.8a.5.5 0 0 0-.5.42l-.36 2.54a7.1 7.1 0 0 0-1.62.95l-2.39-.96a.5.5 0 0 0-.6.22L2.7 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.62-.06.94s.02.63.06.94L2.82 14.5a.5.5 0 0 0-.12.64l1.92 3.32c.13.23.4.31.6.22l2.39-.96c.5.4 1.04.72 1.62.95l.36 2.54a.5.5 0 0 0 .5.42h3.8a.5.5 0 0 0 .5-.42l.36-2.54c.58-.23 1.12-.55 1.62-.95l2.39.96c.2.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.56zM12 15.2a3.2 3.2 0 1 1 0-6.4 3.2 3.2 0 0 1 0 6.4z"
-                  fill="currentColor"
-                />
-              </svg>
-            </button>
-
-            <div className="profile-menu-wrap" ref={profileMenuRef}>
-              <button
-                className="avatar-btn"
-                type="button"
-                onClick={() => {
-                  if (!isLoggedIn) {
-                    handleLogin();
-                    return;
-                  }
-                  setShowProfileMenu((prev) => !prev);
-                }}
-                title={isLoggedIn ? userEmail : 'Login'}
-              >
-                {getAvatarLabel()}
-              </button>
-
-              {isLoggedIn && showProfileMenu && (
-                <div className="profile-dropdown" role="menu" aria-label="Profile menu">
-                  <div className="profile-email">{userEmail}</div>
-                  <button type="button" className="profile-item" onClick={handleOpenProfileTab}>
-                    Open Profile
-                  </button>
-                  <button type="button" className="profile-item" onClick={handleShowHistory}>
-                    History
-                  </button>
-                  <button type="button" className="profile-item" onClick={handleSwitchAccount}>
-                    Switch Account
-                  </button>
-                  <button type="button" className="profile-item danger" onClick={handleLogout}>
-                    Logout
-                  </button>
-                </div>
-              )}
-            </div>
           </div>
-        </header>
+        </div>
+      </header>
 
-        <main className="workspace-grid">
-          <aside className="project-sidebar glass-panel">
-            <div className="project-sidebar-header">
-              <span className="sidebar-title">PROJECTS</span>
-              <div className="sidebar-actions">
-                <button className="sidebar-icon-btn" type="button" onClick={handleFilesUploadClick} title="Upload files">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M12 16V5M12 5l-4 4M12 5l4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                    <path d="M5 19h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                  </svg>
-                </button>
-                <button className="sidebar-icon-btn" type="button" onClick={handleShowHistory} title="History">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M3 12a9 9 0 1 0 3-6.7" stroke="currentColor" strokeWidth="1.6" />
-                    <path d="M3 4v4h4M12 7v6l4 2" stroke="currentColor" strokeWidth="1.6" />
-                  </svg>
-                </button>
-              </div>
-            </div>
+      {/* ════════════════════════════════════════════ */}
+      {/* IDE BODY                                     */}
+      {/* ════════════════════════════════════════════ */}
+      <div className="ide-body">
 
-            {projectNotice && <div className="project-notice">{projectNotice}</div>}
-
+        {/* ── LEFT SIDEBAR ── */}
+        <aside className="sidebar">
+          {/* Search */}
+          <div className="sidebar-search-wrap">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="sidebar-search-icon"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input
-              ref={fileInputRef}
-              type="file"
-              accept=".py,.java,.cpp,.cc,.cxx,.c,.hpp,.h,.txt"
-              multiple
-              className="hidden-file-input"
-              onChange={handleFilesSelected}
+              className="sidebar-search"
+              type="text"
+              placeholder="Search files…"
+              value={sidebarSearch}
+              onChange={(e) => setSidebarSearch(e.target.value)}
             />
+          </div>
 
+          {/* Files section */}
+          <div className="sidebar-section">
+            <div className="sidebar-section-header">
+              <span>FILES</span>
+              <button className="sidebar-icon-btn" type="button" onClick={handleFilesUploadClick} title="Upload files">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 16V4M8 8l4-4 4 4"/><path d="M5 20h14"/></svg>
+              </button>
+            </div>
+            <input ref={fileInputRef} type="file" accept=".py,.java,.cpp,.cc,.cxx,.c,.hpp,.h,.txt" multiple className="hidden-file-input" onChange={handleFilesSelected} />
+            {projectNotice && <div className="sidebar-notice">{projectNotice}</div>}
             <ul className="file-list">
-              {projectFiles.length === 0 && <li className="empty-files">No uploaded files yet</li>}
-              {projectFiles.map((file) => (
+              {filteredFiles.length === 0 && <li className="empty-files">{sidebarSearch ? 'No match' : 'No files uploaded'}</li>}
+              {filteredFiles.map((file) => (
                 <li key={file.name} className="file-item-row">
-                  <button
-                    className={`file-btn ${activeFileName === file.name ? 'active' : ''}`}
-                    type="button"
-                    onClick={() => handleOpenProjectFile(file)}
-                  >
-                    <span className="file-dot" aria-hidden="true">
-                      •
-                    </span>
-                    {file.name}
+                  <button className={`file-btn ${activeFileName === file.name ? 'active' : ''}`} type="button" onClick={() => handleOpenProjectFile(file)}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="file-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    <span className="file-name">{file.name}</span>
                   </button>
-                  <button
-                    type="button"
-                    className="file-remove-btn"
-                    title={`Remove ${file.name}`}
-                    aria-label={`Remove ${file.name}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteProjectFile(file.name);
-                    }}
-                  >
-                    ×
-                  </button>
+                  <button type="button" className="file-remove-btn" title={`Remove ${file.name}`} onClick={(e) => { e.stopPropagation(); handleDeleteProjectFile(file.name); }}>✕</button>
                 </li>
               ))}
             </ul>
-          </aside>
+          </div>
 
-          <section className="editor-zone">
-            <div className="editor-card glass-panel">
-              <div className="editor-toolbar">
-                <span className="editor-title">{language.toUpperCase()} Workspace</span>
-                <span className="editor-status">{error ? 'Syntax error detected' : 'Ready to compile'}</span>
+          {/* History section */}
+          <div className="sidebar-section">
+            <div className="sidebar-section-header">
+              <span>HISTORY</span>
+              <button className="sidebar-icon-btn" type="button" onClick={handleShowHistory} title="View full history">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </button>
+            </div>
+            {!isLoggedIn ? (
+              <p className="sidebar-hint">Login to see history</p>
+            ) : (
+              <p className="sidebar-hint">Click clock icon to view full history</p>
+            )}
+          </div>
+        </aside>
+
+        {/* ── EDITOR MAIN ── */}
+        <div className="editor-main">
+
+          {/* Active file tab strip */}
+          <div className="editor-tabs">
+            {activeFileName ? (
+              <div className="editor-tab active">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                {activeFileName}
               </div>
-              <div className="editor-body">
-                <Editor
-                  height="100%"
-                  language={getMonacoLanguage()}
-                  value={code}
-                  onChange={handleEditorChange}
-                  theme={editorTheme}
-                  options={{
-                    fontSize: editorFontSize,
-                    minimap: { enabled: false },
-                    scrollBeyondLastLine: false,
-                    automaticLayout: true,
-                    tabSize: 4,
-                    wordWrap: editorWordWrap,
-                    lineNumbers: 'on',
-                    renderLineHighlight: 'line',
-                    cursorBlinking: 'smooth',
-                    glyphMargin: true,
-                    smoothScrolling: true
+            ) : (
+              <div className="editor-tab active">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                {language === 'cpp' ? 'main.cpp' : language === 'python' ? 'main.py' : 'Main.java'}
+              </div>
+            )}
+            {error && <span className="editor-tab-error">⚠ Error</span>}
+          </div>
+
+          {/* Monaco Editor */}
+          <div className="editor-wrap">
+            <Editor
+              height="100%"
+              language={getMonacoLanguage()}
+              value={code}
+              onChange={handleEditorChange}
+              theme={editorTheme}
+              options={{
+                fontSize: editorFontSize,
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                automaticLayout: true,
+                tabSize: 4,
+                wordWrap: editorWordWrap,
+                lineNumbers: 'on',
+                renderLineHighlight: 'line',
+                cursorBlinking: 'smooth',
+                glyphMargin: false,
+                smoothScrolling: true,
+                padding: { top: 12, bottom: 12 }
+              }}
+            />
+          </div>
+
+          {/* ── BOTTOM PANEL ── */}
+          <div className={`bottom-panel ${bottomPanelCollapsed ? 'collapsed' : ''}`}>
+            <div className="panel-tabs">
+              {['output', 'terminal', 'problems'].map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  className={`panel-tab ${activeBottomTab === tab ? 'active' : ''}`}
+                  onClick={() => {
+                    setActiveBottomTab(tab);
+                    if (bottomPanelCollapsed) setBottomPanelCollapsed(false);
                   }}
-                />
-
-              </div>
-            </div>
-
-            <div className="bottom-grid">
-              <div className="input-card glass-panel">
-                <div className="section-header">INPUT</div>
-                <textarea
-                  className="input-textarea"
-                  placeholder="Enter value: 20"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                />
-              </div>
-
-              <div className="terminal-card glass-panel">
-                <div className="section-header">TERMINAL</div>
-                <pre className="terminal-output">{terminalText}</pre>
-              </div>
-            </div>
-          </section>
-
-          <aside className="execution-panel glass-panel">
-            <div className="execution-title">Execution Results</div>
-            <div className="result-tabs">
+                >
+                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                  {tab === 'problems' && error && <span className="panel-badge">1</span>}
+                </button>
+              ))}
+              <div className="panel-tabs-spacer" />
+              {/* Stdin label */}
+              <span className="panel-stdin-label">stdin:</span>
+              <input
+                className="panel-stdin-input"
+                type="text"
+                placeholder="Enter input…"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+              />
               <button
-                className={`result-tab ${activeResultTab === 'output' ? 'active' : ''}`}
                 type="button"
-                onClick={() => setActiveResultTab('output')}
+                className="panel-collapse-btn"
+                onClick={() => setBottomPanelCollapsed((p) => !p)}
+                title={bottomPanelCollapsed ? 'Expand panel' : 'Collapse panel'}
               >
-                OUTPUT
-              </button>
-              <button
-                className={`result-tab ${activeResultTab === 'errors' ? 'active' : ''}`}
-                type="button"
-                onClick={() => setActiveResultTab('errors')}
-              >
-                ERRORS
-              </button>
-              <button
-                className={`result-tab ${activeResultTab === 'stats' ? 'active' : ''}`}
-                type="button"
-                onClick={() => setActiveResultTab('stats')}
-              >
-                STATS
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={bottomPanelCollapsed ? 'rotated' : ''}><polyline points="18 15 12 9 6 15"/></svg>
               </button>
             </div>
 
-            {activeResultTab === 'output' && (
-              <div className="result-card">
-                <div className="result-meta">QuantumCompiler | {language.toUpperCase()} Runtime</div>
-                <div className="result-runtime">Runtime: {runtimeMs}ms</div>
-                <pre className={error ? 'output-text error' : 'output-text'}>
-                  {output || 'Output will appear here after you run the program.'}
-                </pre>
-                <div className={`running-indicator ${isRunning ? 'active' : ''}`}>
-                  {isRunning ? 'Running...' : 'Idle'}
-                </div>
+            {!bottomPanelCollapsed && (
+              <div className="panel-content">
+                {activeBottomTab === 'output' && (
+                  <pre className="panel-output">
+                    {isRunning
+                      ? '⟳ Running…'
+                      : output
+                      ? output
+                      : 'Output will appear here after you run the program.'}
+                  </pre>
+                )}
+                {activeBottomTab === 'terminal' && (
+                  <pre className="panel-output panel-terminal">
+                    {'$ quantum-run ' + (language === 'cpp' ? 'main.cpp' : language === 'python' ? 'main.py' : 'Main.java') + '\n'}
+                    {isRunning
+                      ? 'INFO: Quantum Execution Engine running…'
+                      : 'INFO: Quantum Execution Engine ready.'}
+                    {output ? '\n' + output : ''}
+                  </pre>
+                )}
+                {activeBottomTab === 'problems' && (
+                  <div className="panel-output">
+                    {error
+                      ? <div className="panel-error-row"><span className="panel-error-icon">✕</span>{error}</div>
+                      : <span className="panel-no-problems">No problems detected.</span>
+                    }
+                  </div>
+                )}
               </div>
             )}
+          </div>
 
-            {activeResultTab === 'errors' && (
-              <div className="result-card">
-                {error ? <div className="error-message">{error}</div> : <div className="no-error">No errors found.</div>}
-              </div>
-            )}
-
-            {activeResultTab === 'stats' && (
-              <div className="result-card">
-                <div className="stats-values">
-                  <span>Runtime: {runtimeMs} ms</span>
-                  <span>CPU: {cpuUsage}%</span>
-                  <span>Memory: {memoryUsage}</span>
-                  <span>Status: {isRunning ? 'Running' : 'Idle'}</span>
-                </div>
-              </div>
-            )}
-          </aside>
-        </main>
-      </div>
+        </div>{/* end editor-main */}
+      </div>{/* end ide-body */}
     </div>
   );
 }
 
 export default App;
+
