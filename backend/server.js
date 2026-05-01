@@ -489,7 +489,7 @@ async function compileCpp(code, input) {
   if (!fs.existsSync(outputFile)) {
     fs.writeFileSync(sourceFile, code);
     const compileResult = await runProcess(CPP_COMPILER, [sourceFile, '-std=c++17', '-O0', '-o', outputFile], {
-      timeoutMs: 15000
+      timeoutMs: 30000
     });
 
     if (compileResult.timedOut) {
@@ -497,7 +497,7 @@ async function compileCpp(code, input) {
       return {
         success: false,
         output: compileResult.stdout,
-        error: 'Compilation timeout (15 seconds exceeded)'
+        error: 'Compilation timeout (30 seconds exceeded)'
       };
     }
 
@@ -591,7 +591,7 @@ async function compileJava(code, input) {
   if (!fs.existsSync(classFile)) {
     fs.writeFileSync(sourceFile, code);
     const compileResult = await runProcess('javac', [sourceFile], {
-      timeoutMs: 15000
+      timeoutMs: 30000
     });
 
     if (compileResult.timedOut) {
@@ -599,7 +599,7 @@ async function compileJava(code, input) {
       return {
         success: false,
         output: compileResult.stdout,
-        error: 'Compilation timeout (15 seconds exceeded)'
+        error: 'Compilation timeout (30 seconds exceeded)'
       };
     }
 
